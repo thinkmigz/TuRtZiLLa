@@ -1,0 +1,317 @@
+//@version=5
+indicator("Institutional Zones & Backwards Flow (Merged Version + Spike Alert)", overlay=true)
+
+//Version 6 is master
+
+// === LABEL ARRAYS ===
+var label[] supplyLabels   = array.new_label()
+var label[] demandLabels   = array.new_label()
+var label[] spikeDemLabels = array.new_label()
+var label[] spikeSupLabels = array.new_label()
+var label[] sweepLabels    = array.new_label()
+
+// === ZONE STORAGE ===
+var box[] supplyBoxes     = array.new_box()
+var box[] demandBoxes     = array.new_box()
+var box[] spikeDemBoxes   = array.new_box()
+var box[] spikeSupBoxes   = array.new_box()
+var int[] spikeDemTimes   = array.new_int()
+var int[] spikeSupTimes   = array.new_int()
+
+// === USER INPUTS ===
+showSupply       = input.bool(true, "Show Structure Supply Zones")
+showDemand       = input.bool(true, "Show Structure Demand Zones")
+showSpikes       = input.bool(true, "Show Spike-Based Zones")
+showBackflow     = input.bool(true, "Show Backwards Order Flow")
+wickPct          = input.float(0.4, "Wick % Threshold", step=0.05)
+zoneLifeBars     = input.int(100, "Max Zone Width (bars)", minval=10)
+expireBars       = input.int(300, "Zone Expiration (bars)", minval=10)
+multiBarLookback = input.int(3, "Multi-Bar Break Lookback", minval=1)
+volConfirm       = input.bool(true, "Use Volume Confirmation")
+volLength        = input.int(5, "Volume MA Length", minval=1)
+trapLookback     = input.int(30, "Trap Setup Max Lookback", minval=10)
+showZoneLabels   = input.bool(true, "Show Zone Labels")
+showSweepLabels  = input.bool(true, "Show Liquidity Sweep Labels")
+
+// === VOLUME LOGIC ===
+volMA      = ta.sma(volume, volLength)
+volStrong  = volume > volMA * 1.5
+volMedium  = volume > volMA
+volWeak    = not volMedium
+volLabel = volStrong ? "50%" : volMedium ? "70%" : "90%"
+
+
+volColorDemand = volStrong ? color.new(color.maroon, 50) : volMedium ? color.new(color.orange, 70) : color.new(color.orange, 90)
+volColorSupply = volStrong ? color.new(color.fuchsia, 50) : volMedium ? color.new(color.fuchsia, 70) : color.new(color.fuchsia, 90)
+volPass = not volConfirm or volMedium or volStrong
+
+// === CANDLE LOGIC ===
+isSmallBody    = math.abs(close - open) < (high - low) * 0.35
+strongUp       = close > high[1] and close > open
+strongDown     = close < low[1] and close < open
+priorUp        = close[2] > open[2]
+priorDown      = close[2] < open[2]
+bodyHigh       = math.max(open[1], close[1])
+bodyLow        = math.min(open[1], close[1])
+brokePrevLow   = low < ta.lowest(low[1], multiBarLookback)
+brokePrevHigh  = high > ta.highest(high[1], multiBarLookback)
+
+// === STRUCTURE SUPPLY ZONE ===
+supplyCond = showSupply and isSmallBody[1] and priorUp and strongDown
+if supplyCond
+    top = high[1]
+    bottom = bodyLow
+    boxRef = box.new(bar_index[1], top, bar_index + zoneLifeBars, bottom, border_color=color.red, bgcolor=color.new(color.red, 85), extend=extend.right)
+    array.push(supplyBoxes, boxRef)
+    if showZoneLabels
+        labelRef = label.new(bar_index[1], top, text="Supply", style=label.style_label_down, color=color.red, textcolor=color.white, size=size.tiny)
+        array.push(supplyLabels, labelRef)
+
+// === STRUCTURE DEMAND ZONE ===
+demandCond = showDemand and isSmallBody[1] and priorDown and strongUp
+if demandCond
+    top = bodyHigh
+    bottom = low[1]
+    boxRef = box.new(bar_index[1], top, bar_index + zoneLifeBars, bottom, border_color=color.green, bgcolor=color.new(color.green, 85), extend=extend.right)
+    array.push(demandBoxes, boxRef)
+    if showZoneLabels
+        labelRef = label.new(bar_index[1], bottom, text="Demand", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.tiny)
+        array.push(demandLabels, labelRef)
+
+// === SPIKE DEMAND ZONE ===
+spikeDemand = showSpikes and brokePrevLow and close > open and ((open - low) / (high - low)) > wickPct and volPass
+if spikeDemand
+    boxRef = box.new(bar_index, close, bar_index + zoneLifeBars, low, border_color=color.orange, bgcolor=volColorDemand, extend=extend.right)
+    array.push(spikeDemBoxes, boxRef)
+    array.push(spikeDemTimes, bar_index)
+    if showZoneLabels
+        labelRef = label.new(bar_index, low, text="Spike Demand", style=label.style_label_up, color=color.orange, textcolor=color.white, size=size.tiny)
+        array.push(spikeDemLabels, labelRef)
+
+
+// === SPIKE SUPPLY ZONE ===
+spikeSupply = showSpikes and brokePrevHigh and close < open and ((high - open) / (high - low)) > wickPct and volPass
+if spikeSupply
+    boxRef = box.new(bar_index, high, bar_index + zoneLifeBars, close, border_color=color.fuchsia, bgcolor=volColorSupply, extend=extend.right)
+    array.push(spikeSupBoxes, boxRef)
+    array.push(spikeSupTimes, bar_index)
+    if showZoneLabels
+        labelRef = label.new(bar_index, high, text="Spike Supply", style=label.style_label_down, color=color.fuchsia, textcolor=color.white, size=size.tiny)
+        array.push(spikeSupLabels, labelRef)
+
+// === CLEANUP STRUCTURE ZONES ===
+if array.size(supplyBoxes) > 0
+    for i = array.size(supplyBoxes) - 1 to 0
+        b = array.get(supplyBoxes, i)
+        l = array.get(supplyLabels, i)
+        if close > box.get_top(b) or (bar_index - box.get_left(b)) > expireBars
+            box.delete(b)
+            label.delete(l)
+            array.remove(supplyBoxes, i)
+            array.remove(supplyLabels, i)
+
+if array.size(demandBoxes) > 0
+    for i = array.size(demandBoxes) - 1 to 0
+        b = array.get(demandBoxes, i)
+        l = array.get(demandLabels, i)
+        if close < box.get_bottom(b) or (bar_index - box.get_left(b)) > expireBars
+            box.delete(b)
+            label.delete(l)
+            array.remove(demandBoxes, i)
+            array.remove(demandLabels, i)
+
+if array.size(spikeDemBoxes) > 0
+    for i = array.size(spikeDemBoxes) - 1 to 0
+        b = array.get(spikeDemBoxes, i)
+        l = array.get(spikeDemLabels, i)
+        t = array.get(spikeDemTimes, i)
+        if close < box.get_bottom(b) or (bar_index - t) > expireBars
+            box.delete(b)
+            label.delete(l)
+            array.remove(spikeDemBoxes, i)
+            array.remove(spikeDemLabels, i)
+            array.remove(spikeDemTimes, i)
+
+if array.size(spikeSupBoxes) > 0
+    for i = array.size(spikeSupBoxes) - 1 to 0
+        b = array.get(spikeSupBoxes, i)
+        l = array.get(spikeSupLabels, i)
+        t = array.get(spikeSupTimes, i)
+        if close > box.get_top(b) or (bar_index - t) > expireBars
+            box.delete(b)
+            label.delete(l)
+            array.remove(spikeSupBoxes, i)
+            array.remove(spikeSupLabels, i)
+            array.remove(spikeSupTimes, i)
+
+if array.size(sweepLabels) > 0
+    for i = array.size(sweepLabels) - 1 to 0
+        l = array.get(sweepLabels, i)
+        if bar_index - label.get_x(l) > expireBars
+            label.delete(l)
+            array.remove(sweepLabels, i)
+
+// === ALERT WHEN PRICE ENTERS ANY ZONE ===
+inZone = false
+for b in supplyBoxes
+    inZone := inZone or (close <= box.get_top(b) and close >= box.get_bottom(b))
+for b in demandBoxes
+    inZone := inZone or (close <= box.get_top(b) and close >= box.get_bottom(b))
+for b in spikeDemBoxes
+    inZone := inZone or (close <= box.get_top(b) and close >= box.get_bottom(b))
+for b in spikeSupBoxes
+    inZone := inZone or (close <= box.get_top(b) and close >= box.get_bottom(b))
+
+alertcondition(inZone, title="Price In Any Zone", message="Price has entered a supply or demand zone.")
+if inZone
+    alert("Price In Zone: Price has entered a supply or demand zone.", alert.freq_once_per_bar)
+
+
+// === BACKWARD ORDER FLOW ===
+upperWick    = high - math.max(close, open)
+lowerWick    = math.min(close, open) - low
+candleRange  = high - low
+upperWickPct = candleRange > 0 ? upperWick / candleRange : 0
+lowerWickPct = candleRange > 0 ? lowerWick / candleRange : 0
+
+backflowSell = showBackflow and upperWickPct > wickPct and close < open
+backflowBuy  = showBackflow and lowerWickPct > wickPct and close > open
+
+//plotshape(backflowSell, title="Backwards Flow - Sell", location=location.abovebar, color=color.orange, style=shape.triangledown, size=size.small)
+//plotshape(backflowBuy,  title="Backwards Flow - Buy",  location=location.belowbar, color=color.aqua,   style=shape.triangleup,   size=size.small)
+
+// === TRAP LOGIC SETUP ===
+
+// Track bar index of last structure zones
+recentSupplyBar = ta.valuewhen(supplyCond, bar_index, 0)
+recentDemandBar = ta.valuewhen(demandCond, bar_index, 0)
+recentSpikeSupplyBar = ta.valuewhen(spikeSupply, bar_index, 0)
+recentSpikeDemandBar = ta.valuewhen(spikeDemand, bar_index, 0)
+
+// Trap Conditions
+validSupplyTrap = not na(recentSupplyBar) and not na(recentSpikeSupplyBar) and 
+                  (recentSpikeSupplyBar > recentSupplyBar) and 
+                  (bar_index - recentSupplyBar <= trapLookback)
+
+validDemandTrap = not na(recentDemandBar) and not na(recentSpikeDemandBar) and 
+                  (recentSpikeDemandBar > recentDemandBar) and 
+                  (bar_index - recentDemandBar <= trapLookback)
+
+// Check if price is still inside the spike zone (match bar index to box)
+priceInsideSpikeSupply = false
+if validSupplyTrap and array.size(spikeSupTimes) > 0
+    for i = 0 to array.size(spikeSupTimes) - 1
+        if array.get(spikeSupTimes, i) == recentSpikeSupplyBar
+            b = array.get(spikeSupBoxes, i)
+            top = box.get_top(b)
+            bottom = box.get_bottom(b)
+            priceInsideSpikeSupply := close <= top and close >= bottom
+            break
+
+priceInsideSpikeDemand = false
+if validDemandTrap and array.size(spikeDemTimes) > 0
+    for i = 0 to array.size(spikeDemTimes) - 1
+        if array.get(spikeDemTimes, i) == recentSpikeDemandBar
+            b = array.get(spikeDemBoxes, i)
+            top = box.get_top(b)
+            bottom = box.get_bottom(b)
+            priceInsideSpikeDemand := close <= top and close >= bottom
+            break
+
+// Final Trap Triggers
+trapAlertSupply = validSupplyTrap and priceInsideSpikeSupply and volPass
+trapAlertDemand = validDemandTrap and priceInsideSpikeDemand and volPass
+
+// === PLOT TRAP LABELS ===
+//if trapAlertSupply
+//    label.new(bar_index, high, "TRAP", style=label.style_label_down, color=color.orange, textcolor=color.white)
+//
+//if trapAlertDemand
+//    label.new(bar_index, low, "TRAP", style=label.style_label_up, color=color.lime, textcolor=color.white)
+//
+// === ALERT CONDITIONS ===
+//alertcondition(trapAlertSupply, title="Trap Setup (Supply)", message="Trap setup detected in supply zone.")
+//alertcondition(trapAlertDemand, title="Trap Setup (Demand)", message="Trap setup detected in demand zone.")
+
+
+// === ALERTS FOR NEW ZONE CREATION ===
+alertcondition(supplyCond, title="New Supply Zone Created", message="A new structure supply zone has been created on bar close.")
+alertcondition(demandCond, title="New Demand Zone Created", message="A new structure demand zone has been created on bar close.")
+
+if supplyCond
+    alert("A new structure supply zone has been created on bar close.", alert.freq_once_per_bar_close)
+
+if demandCond
+    alert("A new structure demand zone has been created on bar close.", alert.freq_once_per_bar_close)
+
+//plotshape(spikeSupply, title="Spike Detected", location=location.abovebar, color=color.fuchsia, style=shape.xcross)
+plotshape(spikeDemand and volPass, title="Zone Detected", location=location.belowbar, color=color.rgb(255, 255, 255), style=shape.xcross)
+
+//___________________________________________________________________________________________________________________________________________________________
+
+
+
+
+// === INPUTS ===
+riskToReward    = input.float(title="Risk:Reward", defval=1.0, minval=0.1)
+useVolumeFilterLong = input.bool(true, "Require Volume for Long")
+useVolumeFilterShort = input.bool(true, "Require Volume for Short")
+
+
+// === VOLUME FILTER FOR SHORT SIGNALS ===
+greenCandle        = close > open                          // Current candle is bullish (green)
+prevRedCandle      = close[1] < open[1]                    // Previous candle was bearish (red)
+volumeFilterShortOK = volume < volume[1] and prevRedCandle // Volume lower than previous and previous was red
+
+// === FINALIZED SHORT SIGNAL CONDITIONS ===
+prevRed = close[1] < open[1]     // 1st previous candle red
+prevRed2 = close[2] < open[2]     // 2nd previous candle red
+
+rule1S = low[1] < close[1]                    // Previous candle closed above its low (lower wick)
+rule2S = close > open                               // Current candle is red (close < open)
+rule3S = close <= high[1]                     // Current close is below or equal to previous high
+rule4S = close[1] <= high                     // Previous close is below or equal to current high
+rule5S = low[1] <= low                        // Previous low is below or equal to current low
+rule6S = high[1] > high                       // Previous high is greater than current high (failed breakout)
+rule7S = not useVolumeFilterShort or volumeFilterShortOK  // Volume trap logic (optional toggle)
+rule8s = open > close[1]
+ShortPull = greenCandle and prevRed and prevRed2
+
+validShort = rule1S and rule2S and rule3S and rule4S and rule5S and rule6S and rule7S and ShortPull
+validShortBody = rule2S and rule3S and rule4S and volumeFilterShortOK and ShortPull and rule8s
+
+// === VOLUME FILTER FOR LONG SIGNALS ===
+redCandle = close < open                              // Current candle is red
+prevGreenCandle = close[1] > open[1]                  // Previous candle was green
+volumeFilterLongOK = volume < volume[1] and prevGreenCandle
+
+// === FINALIZED LONG SIGNAL CONDITIONS ===
+prevGreen1 = close[1] > open[1]     // 1st previous candle green
+prevGreen2 = close[2] > open[2]     // 2nd previous candle green
+
+rule1L = high[1] > close[1]
+rule2L = close < open   
+rule3L = close >= low[1]
+rule4L = close[1] >= low
+rule5L = high[1] >= high
+rule6L = low[1] < low
+rule7L = not useVolumeFilterLong or volumeFilterLongOK 
+rule8L = open < close[1]
+LongPull = redCandle and prevGreen1 and prevGreen2
+
+
+validLong = rule1L and rule2L and rule3L and rule4L and rule5L and rule6L and rule7L and LongPull
+validLongBody = rule2L and rule3L and rule4L and volumeFilterLongOK and LongPull and rule8L
+
+// === PLOTS ===
+
+plotshape(validLong, title="Long Entry", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.small)
+plotshape(validShort, title="Short Entry", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.small)
+plotshape(validShortBody, title="Short Body Entry", location=location.abovebar, color=color.fuchsia, style=shape.triangledown, size=size.tiny)
+plotshape(validLongBody, title="Long Body Entry", location=location.belowbar, color=color.teal, style=shape.triangleup, size=size.tiny)
+
+
+// === ALERTS ===
+alertcondition(validLong, title="Long Signal", message="Bullish Trap Reversal Signal for {{ticker}}")
+alertcondition(validShort, title="Short Signal", message="Bearish Trap Reversal Signal for {{ticker}}")
+
