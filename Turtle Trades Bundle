@@ -1,0 +1,823 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © TuRtZiLLA
+// credit to © MichelT for VWAP
+// 
+
+//@version=6
+indicator(title="Turtle Trades 2025 Cog AI ", shorttitle="Turle Trades Cog AI", overlay=true)
+
+
+// SETTINGS -----------------------------
+// text, info etc...
+display_set          = display.all - display.price_scale - display.status_line
+ema_text            = "----------------- EMA ------------------"
+bb1                 = "BBands HTF"
+bb2                 = "BB Toggle"
+bb3                 = "BBands LTF"
+vwap                = "----------------- VWAP -----------------"
+dwmLevels           = "------------- D/W/M Levels -------------"
+sdZoneGroupTxt      = "--------- Supply/Demand Zones ----------"
+sdZoneTFSettingTxt  = "-------- S/D Zone TF Settings ----------" 
+groupEma            = "------------- 20/50/200 EMA ------------"
+groupBb             = "------ BBands - 2 Std. Deviation -------"
+groupVwap           = "------- Auto Anchored D/W/M VWAP -------"
+groupSD             = "------------- Supply/Demand ------------"
+groupSDSettings     = "-------- Supply/Demand Settings --------"
+ttBb                = "Shows BBands on LTF"
+groupDwmLevels      = "------------- D/W/M Levels -------------"
+groupCog            = "---------- +/- COG Alerts --------------"
+groupAPlusPanel     = "-------------- A+ Panel  ---------------"
+
+// colors
+ema20color                      = color.new(color.aqua, 70)
+ema50color                      = color.new(color.blue, 70)
+ema200color                     = color.new(color.purple, 50)
+dVwapColor                      = color.new(color.gray, 50)
+wVwapColor                      = color.new(color.yellow, 40)
+mVwapColor                      = color.new(color.orange, 10)
+globexLevelColor                = color.rgb(120, 123, 134, 17)
+dLevelColor                     = color.rgb(16, 105, 207, 18)
+wLevelColor                     = color.rgb(218, 221, 8, 5)
+mLevelColor                     = color.rgb(255, 153, 0, 23)
+bbColor                         = color.new(color.gray, 50)
+cog_bg_color_pos                = color.new(color.green, 80)
+cog_bg_color_neg                = color.new(color.red, 80)
+cog_lbl_color_pos               = color.new(color.green, 90)
+cog_lbl_color_neg               = color.new(color.red, 90)
+cog_lbl_text_color              = color.new(color.black, 0)
+panel_color                     = color.new(color.gray, 70)
+panel_cell_bg                   = #2c5257e6
+panel_cell_numbers_bg           = color.new(color.black, 20)
+panel_internals_extreme_up      = color.new(color.green, 10)
+panel_internals_elevated        = color.new(color.green, 10)
+panel_internals_flat            = color.white
+panel_internals_dropping        = color.red
+panel_internals_extreme_down    = color.red
+panel_font_color                = color.white
+
+// GLOBALS /  CALCS ----------------------------
+Offset(X)=>
+    Bar=math.min(time - time[1], time[1] - time[2])
+    time + Bar * (1 + X * 1)
+f_get_changePercentage(_p1, _p2) => (_p1 - _p2) * 100 / _p2
+
+current_tf          = timeframe.period
+displayLtf          = timeframe.isintraday and timeframe.multiplier <= 5
+displayMtf          = timeframe.isintraday and (timeframe.multiplier >= 6 and timeframe.multiplier <= 60)
+displayHtf          = timeframe.isdwm
+displayVwapD        = current_tf == "D"
+displayVwapLtf      = displayLtf
+isFutures           = syminfo.type == 'futures'
+isForex             = syminfo.type == 'forex'
+
+src     = close
+ema20   = ta.ema(src, 20)
+ema50   = ta.ema(src, 50)
+ema200  = ta.ema(src, 200)
+dev     = 2.0 * ta.stdev(close, 20)
+
+upperHtf = ema20 + dev
+lowerHtf = ema20 - dev
+
+shortBbandEntryHtf      = close > upperHtf
+longBbandEntryHtf       = close < lowerHtf
+
+MILLIS_IN_DAY   = 86400000
+dwmBarTime      = timeframe.isdwm ? time : time("D")
+
+globexBlank         = "\n‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏"
+dBlank              = "\n‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏"
+wBlank              = "\n‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏"
+mBlank              = "‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏   ‏"
+
+[_gT, _gH, _gL]                         = request.security(syminfo.tickerid, "930", [time[1], high[1], low[1]],  barmerge.gaps_off, barmerge.lookahead_on)
+[_dH, _dL, _dC]                         = request.security(syminfo.tickerid, "D", [high[1], low[1], close[1]],  barmerge.gaps_off, barmerge.lookahead_on)
+[_wH, _wL, _wC]                         = request.security(syminfo.tickerid, "W", [high[1], low[1], close[1]],  barmerge.gaps_off, barmerge.lookahead_on)
+[_mH, _mL, _mC]                         = request.security(syminfo.tickerid, "M", [high[1], low[1], close[1]],  barmerge.gaps_off, barmerge.lookahead_on)
+
+is20and200Bullish       = ema20 > ema200     
+is20and50Bullish        = ema20 > ema50
+is50and200Bullish       = ema50 > ema200
+is20and200Bearish       = not is20and200Bullish
+is20and50Bearish        = not is20and50Bullish
+is50and200Bearish       = not is50and200Bullish
+
+var legOutCandleSize    = 2.0
+var cog_threshold       = 1.0                    
+
+// INPUTS --------------------------------
+
+ltfColor = input(defval = ema20color, title="20 EMA", inline = ema_text, group = groupEma)
+mtfColor = input(defval = ema50color, title="50 EMA", inline = ema_text, group = groupEma)
+htfColor = input(defval = ema200color, title="200 EMA", inline = ema_text, group = groupEma)
+
+upperHtfColor = input(defval = bbColor, title="Upper HTF Band", inline = bb1, group = groupBb)
+lowerHtfColor = input(defval = bbColor, title="Lower HTF Band", inline = bb1, group = groupBb)
+
+dvColor         = input(defval = dVwapColor, title="D VWAP Color", inline = vwap, group = groupVwap)
+wvColor         = input(defval = wVwapColor, title="W VWAP Color", inline = vwap, group = groupVwap)
+mvColor         = input(defval = mVwapColor, title="M VWAP Color", inline = vwap, group = groupVwap)
+showVwapLabels  = input.bool(defval = false, title = "Show VWAP labels?", inline = vwap, group = groupVwap)
+
+globex_Line_Color   = input.color(defval = globexLevelColor, title = "Globex Level", inline = "globexColor", group = groupDwmLevels)
+d_Line_Color        = input.color(defval = dLevelColor, title = "Daily Level", inline = dwmLevels, group = groupDwmLevels)
+w_Line_Color        = input.color(defval = wLevelColor, title = "Weekly Level",  inline = dwmLevels, group = groupDwmLevels)
+m_Line_Color        = input.color(defval = mLevelColor, title = "Monthly Level", inline = dwmLevels, group = groupDwmLevels)
+showGlobexLevels    = input.bool(defval = true, title = "Show Globex Hi/Lo?", inline = "globex", group = groupDwmLevels)
+showGlobexLabels    = input.bool(defval = true, title = 'Show Globex Label?', inline = "globex", group = groupDwmLevels)
+extendLines         = input.bool(defval = true, title = "Extend Levels Across Screen?", inline = dwmLevels, group = groupDwmLevels)
+dwmLineWidth        = input.int(defval = 2, title = "Levels Line Width", minval = 1, maxval = 4, step = 1, group = groupDwmLevels)
+
+showHTFsdZones   = input.bool(true, title = "Show HTF Supply/Demand Zones?", inline = sdZoneGroupTxt, group = groupSD)
+showLTFsdZones   = input.bool(true, title = "Show LTF Supply/Demand Zones?", inline = sdZoneGroupTxt, group = groupSD)
+sdColorLTF       = input.color(defval = #e7c6fd7a, title = 'LTF S/D Color', inline = "LTF Color", group = groupSD)
+sdBorderColorLTF = input.color(defval = #e7c6fd7a, title = 'LTF S/D Border Color', inline = "LTF Color", group = groupSD)
+sdColorITF       = input.color(defval = #fdc6ef7a, title = 'ITF S/D Color', inline = "ITF Color", group = groupSD)
+sdBorderColorITF = input.color(defval = #fdc6ef7a, title = 'ITF S/D Border Color', inline = "ITF Color", group = groupSD)
+sdColorD         = input.color(defval = #00a2ff1a, title = 'D S/D Color', inline = "D Color", group = groupSD)
+sdBorderColorD   = input.color(defval = #00a2ff1a, title = 'D S/D Border Color', inline = "D Color", group = groupSD)
+sdColorW         = input.color(defval = #fcf7001a, title = 'W S/D Color', inline = "W Color", group = groupSD)
+sdBorderColorW   = input.color(defval = #fcf7001a, title = 'W S/D Border Color', inline = "W Color", group = groupSD)
+sdColorM         = input.color(defval = #fc87011a, title = 'M S/D Color', inline = "M Color", group = groupSD)
+sdBorderColorM   = input.color(defval = #fc87011a, title = 'M S/D Border Color', inline = "M Color", group = groupSD)
+
+sdOffset        = input.int(defval = 2, minval = 0, maxval = 30, title="Extend Zones", group = groupSDSettings, tooltip = 'Extends Zone X number of bars past current price')
+showZoneText    = input(true, title = "Show Zone Text", inline = "ZoneTxt", group = groupSDSettings)
+sdZoneTextColor = input.color(defval = color.rgb(0, 0, 0), title = 'S/D Zone Text Color', group = groupSDSettings)
+sdTextAlignV    = input.string("Top", title="Text Align (Vertical)", options=["Top", "Center", "Bottom"], group = groupSDSettings)
+show2mZones     = input.bool(false, title="Show 2m", inline = "LTF", group = groupSDSettings)
+show5mZones     = input.bool(false, title="Show 5m", inline = "LTF", group = groupSDSettings)
+show15mZones    = input.bool(false, title="Show 10m", inline = "LTF", group = groupSDSettings)
+show30mZones    = input.bool(false, title="Show 30m", inline = "ITF", group = groupSDSettings)
+show60mZones    = input.bool(true, title="Show 60m", inline = "ITF", group = groupSDSettings)
+show4hZones     = input.bool(false, title="Show 4h", inline = "ITF", group = groupSDSettings)
+showDZones      = input.bool(true, title="Show D", inline = "HTF", group = groupSDSettings)
+showWZones      = input.bool(true, title="Show W", inline = "HTF", group = groupSDSettings)
+showMZones      = input.bool(true, title="Show M", inline = "HTF", group = groupSDSettings)
+
+if sdTextAlignV == 'Bottom'
+    sdTextAlignV := text.align_bottom
+if sdTextAlignV == 'Center'
+    sdTextAlignV := text.align_center
+if sdTextAlignV == 'Top'
+    sdTextAlignV := text.align_top
+
+cog_color_pos   = input.color(defval = cog_lbl_color_pos, title="+COG Label Color", inline = "CogColor", group = groupCog)
+cog_color_neg   = input.color(defval = cog_lbl_color_neg, title="-COG Label Color", inline = "CogColor", group = groupCog)
+cog_txt_color   = input.color(defval = cog_lbl_text_color, title="COG Label Text Color", inline = "CogColor", group = groupCog)
+showCogs        = input.bool(true, title="Show Recent Cogs", inline = "Cogs", group = groupCog)
+showAllCogs     = input.bool(true, title="Show All Cogs", inline = "Cogs", group = groupCog)
+
+showAPlusPanel      = input.bool(true, title="Show A+ Setup Helper", inline = "Panel", group = groupAPlusPanel)
+showMinimalistMode  = input.bool(false, title="Minimalist Mode", inline = "PanelMin", group = groupAPlusPanel)
+panelLocation       = input.string('Bottom Right', 'Panel Position', options=['Top Right', 'Bottom Right', 'Top Left', 'Bottom Left', 'Middle Right', 'Bottom Center'], inline = "PanelLoc", group = groupAPlusPanel)
+panelTransparency   = input.int(defval=20, title='Panel Transparency', group=groupAPlusPanel, inline='PanelTrans', minval=0, maxval=100, step=10) 
+panelTextSize       = input.string(defval='normal', title='Panel Size', group= groupAPlusPanel, inline='panelTextSize', options=['auto', 'tiny', 'small', 'normal', 'large', 'huge'])
+panelATRInput       = input.string(defval='15', title='ATR Input', group= groupAPlusPanel, inline='PanelATR', options=['2', '5', '15', '30', '60', 'D', 'W', 'M'])             
+
+// EMAs -----------------------------
+plot(ema20, title="EMA-20", color = ltfColor, offset = 0, linewidth = 2, display = display_set)
+plot(displayMtf ? ema50 : na, title="EMA-50", color = mtfColor, offset = 0, linewidth = 2, display = display_set)
+plot(displayHtf or displayLtf ? ema200 : na, title="EMA-200", color = htfColor, offset = 0, linewidth = 2, display = display_set)
+
+// B BANDS --------------------------
+p1Htf = plot(displayHtf ? upperHtf : na, "HTF Upper BBand", color = upperHtfColor, display = display_set)
+p2Htf = plot(displayHtf ? lowerHtf : na, "HTF Lower BBand", color = lowerHtfColor, display = display_set)
+
+// VWAP ---------------------------------
+// If it's a short day, then there could be no daily bar. Take a previous one.
+if na(dwmBarTime)
+    dwmBarTime := nz(dwmBarTime[1])
+var periodStartD = time - time // zero
+var periodStartW = time - time // zero
+var periodStartM = time - time // zero
+
+makeMondayZero(dayOfWeek) => (dayOfWeek + 5) % 7
+
+tradingDayStart(t) =>
+    y = year(t)
+    m = month(t)
+    d = dayofmonth(t)
+    timestamp(y, m, d, 0, 0, 0)
+
+numDaysBetween(time1, time2) =>
+    y1 = year(time1)
+    m1 = month(time1)
+    d1 = dayofmonth(time1)
+    
+    y2 = year(time2)
+    m2 = month(time2)
+    d2 = dayofmonth(time2)
+    
+    diff = math.abs(timestamp("GMT", y1, m1, d1, 0, 0) - timestamp("GMT", y2, m2, d2, 0, 0))
+    diff / MILLIS_IN_DAY
+
+tradingDay = tradingDayStart(dwmBarTime)
+
+isNewDPeriod() =>
+    isNew = false
+    if tradingDay != nz(tradingDay[1])
+        isNew := na(tradingDay[1]) or tradingDay >= tradingDay[1]
+    
+    isNew
+
+isNewWPeriod() =>
+    isNew = false
+    if tradingDay != nz(tradingDay[1])
+        DAYS_IN_WEEK = 7
+        if isFutures
+            isNew := dayofweek(periodStartW) + numDaysBetween(periodStartW, tradingDay) >= DAYS_IN_WEEK
+        else
+            isNew := makeMondayZero(dayofweek(periodStartW)) + numDaysBetween(periodStartW, tradingDay) >= DAYS_IN_WEEK
+            
+    isNew
+
+isNewMPeriod() =>
+    isNew = false
+    if tradingDay != nz(tradingDay[1])
+        isNew := month(periodStartM) != month(tradingDay) or year(periodStartM) != year(tradingDay)
+            
+    isNew
+
+sumSrcD = float(na)
+sumVolD = float(na)
+sumSrcD := nz(sumSrcD[1], 0)
+sumVolD := nz(sumVolD[1], 0)
+
+sumSrcW = float(na)
+sumVolW = float(na)
+sumSrcW := nz(sumSrcW[1], 0)
+sumVolW := nz(sumVolW[1], 0)
+
+sumSrcM = float(na)
+sumVolM = float(na)
+sumSrcM := nz(sumSrcM[1], 0)
+sumVolM := nz(sumVolM[1], 0)
+
+sumSrcY = float(na)
+sumVolY = float(na)
+sumSrcY := nz(sumSrcY[1], 0)
+sumVolY := nz(sumVolY[1], 0)
+
+if isNewDPeriod()
+    periodStartD := tradingDay
+    sumSrcD := 0.0
+    sumVolD := 0.0
+
+if isNewWPeriod()
+    periodStartW := tradingDay
+    sumSrcW := 0.0
+    sumVolW := 0.0
+
+if isNewMPeriod()
+    periodStartM := tradingDay
+    sumSrcM := 0.0
+    sumVolM := 0.0 
+
+if not na(hlc3) and not na(volume)
+    sumSrcD := sumSrcD + hlc3 * volume
+    sumVolD := sumVolD + volume
+    sumSrcW := sumSrcW + hlc3 * volume
+    sumVolW := sumVolW + volume
+    sumSrcM := sumSrcM + hlc3 * volume
+    sumVolM := sumVolM + volume
+      
+dVwapValue = sumSrcD / sumVolD
+wVwapValue = sumSrcW / sumVolW
+mVwapValue = sumSrcM / sumVolM
+plot(not isForex ? dVwapValue : na, title="D VWAP", style = plot.style_circles, color=dvColor, linewidth = 1, display = display_set)
+plot(not isForex ? wVwapValue : na, title="W VWAP", style = plot.style_circles, color=wvColor, linewidth = 1, display = display_set)
+plot(not isForex ? mVwapValue : na, title="M VWAP", style = plot.style_circles, color=mvColor, linewidth = 1, display = display_set)
+dVwap_lbl       = showVwapLabels ? label.new(bar_index, dVwapValue, text = "Daily VWAP", color = color.new(color.black, 95), style = label.style_label_left, textcolor = color.new(color.black, 50), size = size.small, textalign = text.align_center) : na
+wVwap_lbl       = showVwapLabels ? label.new(bar_index, wVwapValue, text = "Weekly VWAP", color = color.new(color.black, 95), style = label.style_label_left, textcolor = color.new(color.black, 50), size = size.small, textalign = text.align_center) : na
+mVwap_lbl       = showVwapLabels ? label.new(bar_index, mVwapValue, text = "Monthly VWAP", color = color.new(color.black, 95), style = label.style_label_left, textcolor = color.new(color.black, 50), size = size.small, textalign = text.align_center) : na
+label.delete(dVwap_lbl[1])
+label.delete(wVwap_lbl[1])
+label.delete(mVwap_lbl[1])
+
+// DWM / Globex PRICE LEVELS --------------------------
+gHi_text='G Hi | ' + str.tostring(_gH, '0.00')
+gLo_text='G Lo | ' + str.tostring(_gL, '0.00')
+// if timeframe.isintraday and syminfo.type == 'futures'
+//     if showGlobexLevels
+//         LINE_HI     = line.new(Offset(10), _gH, _gT, _gH, width = dwmLineWidth, color = globexLevelColor, style = line.style_dotted, extend = extend.none, xloc = xloc.bar_time)
+//         LINE_LO     = line.new(Offset(10), _gL, _gT, _gL, width = dwmLineWidth, color = globexLevelColor, style = line.style_dotted, extend = extend.none, xloc = xloc.bar_time)
+//         line.delete(LINE_HI[1])
+//         line.delete(LINE_LO[1])
+//     if showGlobexLevels and showGlobexLabels
+//         LABEL_HI    = label.new(Offset(10), _gH, gHi_text, textcolor=color.rgb(3, 77, 110), color = globexLevelColor, style = label.style_label_left, size = size.small, xloc = xloc.bar_time)
+//         LABEL_LO    = label.new(Offset(10), _gL, gLo_text, textcolor=color.rgb(3, 77, 110), color = globexLevelColor, style = label.style_label_left, size = size.small, xloc = xloc.bar_time)
+//         label.delete(LABEL_HI[1])
+//         label.delete(LABEL_LO[1])
+
+daily_High_Line     = line.new(time, _dH, time + 1, _dH, xloc = xloc.bar_time, extend = extendLines ? extend.both : extend.right, color = d_Line_Color, style = line.style_dotted, width = dwmLineWidth)
+daily_Low_Line      = line.new(time, _dL, time -1, _dL, xloc = xloc.bar_time, extend = extendLines ? extend.both : extend.right, color = d_Line_Color, style = line.style_dotted, width = dwmLineWidth)
+line.delete(daily_High_Line[1])
+line.delete(daily_Low_Line[1])
+label_daily_High    = label.new(bar_index, _dH, text = dBlank + "Prev D High : " + str.tostring(_dH, format.mintick), color = color.new(color.black, 100), style = label.style_label_left, textcolor = d_Line_Color, size = size.small, textalign = text.align_center)
+label_daily_Low     = label.new(bar_index, _dL, text = dBlank + "Prev D Low : "  +  str.tostring(_dL, format.mintick), color = color.new(color.black, 100), style = label.style_label_left, textcolor = d_Line_Color, size = size.small, textalign = text.align_center)
+label.delete(label_daily_High[1])
+label.delete(label_daily_Low[1])
+
+weekly_High_Line    = line.new(time, _wH, time + 1, _wH, xloc = xloc.bar_time, extend = extendLines ? extend.both : extend.right, color = w_Line_Color, style = line.style_dotted, width = dwmLineWidth)
+weekly_Low_Line     = line.new(time, _wL, time + 1, _wL, xloc = xloc.bar_time, extend = extendLines ? extend.both : extend.right, color = w_Line_Color, style = line.style_dotted, width = dwmLineWidth)
+line.delete(weekly_High_Line[1])
+line.delete(weekly_Low_Line[1])
+label_weekly_High   = label.new(bar_index, _wH, text = wBlank + "Prev W High : " + str.tostring(_wH, format.mintick), color = color.new(color.black, 100), style = label.style_label_left, textcolor = w_Line_Color, size = size.small, textalign = text.align_center)
+label_weekly_Low    = label.new(bar_index, _wL, text = wBlank + "Prev W Low : "  + str.tostring(_wL, format.mintick), color = color.new(color.black, 100), style = label.style_label_left, textcolor = w_Line_Color, size = size.small, textalign = text.align_center)
+label.delete(label_weekly_High[1])
+label.delete(label_weekly_Low[1])
+
+monthly_High_Line   = line.new(time, _mH,  time + 1, _mH,  xloc = xloc.bar_time, extend = extendLines ? extend.both : extend.right, color = m_Line_Color, style = line.style_dotted, width = dwmLineWidth)
+monthly_Low_Line    = line.new(time, _mL,   time + 1, _mL,   xloc = xloc.bar_time, extend = extendLines ? extend.both : extend.right, color = m_Line_Color, style = line.style_dotted, width = dwmLineWidth)
+line.delete(monthly_High_Line[1])
+line.delete(monthly_Low_Line[1])
+label_monthly_High  = label.new(bar_index, _mH, text = mBlank + "Prev M High : " + str.tostring(_mH, format.mintick) + "\n", color = color.new(color.black, 100), style = label.style_label_left, textcolor = m_Line_Color, size = size.small, textalign = text.align_center)
+label_monthly_Low   = label.new(bar_index, _mL, text = mBlank + "Prev M Low : "  + str.tostring(_mL, format.mintick) + "\n", color = color.new(color.black, 100), style = label.style_label_left, textcolor = m_Line_Color, size = size.small, textalign = text.align_center)
+label.delete(label_monthly_High[1])
+label.delete(label_monthly_Low[1])
+
+// Supply and Demand Zones -----------------------------------------
+
+
+if current_tf == 'D'
+    current_tf := '1440'
+if current_tf == 'W'
+    current_tf := '10080'
+if showLTFsdZones
+    current_tf := '1'
+
+momentCTD           = math.round(time(current_tf) + (sdOffset * 60000 * str.tonumber(current_tf)))
+var box[] supply_HT = array.new_box()
+var box[] demand_HT = array.new_box()
+
+drawSupplyZone(formattedTf, ctd_ht, top_ht, ctd, bot_ht, box_color, border_color) =>
+    box supply = box.new(left=ctd_ht, top=top_ht, right=ctd, bgcolor=box_color, bottom=bot_ht, xloc=xloc.bar_time)
+    box.set_border_color(supply, border_color)
+    if showZoneText
+        box.set_text(supply, formattedTf)
+        box.set_text_size(supply, size.small)
+        box.set_text_color(supply, sdZoneTextColor)
+        box.set_text_halign(supply, text.align_right)
+        box.set_text_valign(supply, sdTextAlignV)
+    array.push(supply_HT, supply)
+
+drawDemandZone(formattedTf, ctd_ht, top_ht, ctd, bot_ht, box_color, border_color) =>
+    box demand = box.new(left=ctd_ht, top=top_ht, right=ctd, bottom=bot_ht, bgcolor=box_color, xloc=xloc.bar_time)
+    box.set_border_color(demand, border_color)
+    if showZoneText
+        box.set_text(demand, formattedTf)
+        box.set_text_size(demand, size.small)
+        box.set_text_color(demand, sdZoneTextColor)
+        box.set_text_halign(demand, text.align_right)
+        box.set_text_valign(demand, sdTextAlignV)
+    array.push(demand_HT, demand)
+
+createZones(timeframe) => 
+    [open_HT, high_HT, low_HT, close_HT]    = request.security(syminfo.tickerid, timeframe, [open[1], high[1], low[1], close[1]], lookahead = barmerge.lookahead_on)
+
+    redCandle_HT        = close_HT < open_HT
+    greenCandle_HT      = close_HT > open_HT
+    neutralCandle_HT    = close_HT == open_HT
+    candleChange_HT     = math.abs(close_HT - open_HT)
+
+    formatTf            = ""
+    bgColorForBox       = sdColorLTF
+    borderColorForBox   = sdBorderColorLTF
+
+    if timeframe == '2'
+        formatTf := '2m'
+    else if timeframe == '5'
+        formatTf := '5m'
+    else if timeframe == '10'
+        formatTf := '10m'
+    else if timeframe == '30'
+        formatTf := '30m'
+        bgColorForBox := sdColorITF
+        borderColorForBox := sdBorderColorITF
+    else if timeframe == '45'
+        formatTf := '45m'
+        bgColorForBox := sdColorITF
+        borderColorForBox := sdBorderColorITF
+    else if timeframe == '60'
+        formatTf := '1h'
+        bgColorForBox := sdColorITF
+        borderColorForBox := sdBorderColorITF
+    else if timeframe == '240'
+        formatTf := '4h'
+        bgColorForBox := sdColorITF
+        borderColorForBox := sdBorderColorITF
+    else if timeframe == 'D'
+        formatTf := 'D'
+        bgColorForBox := sdColorD
+        borderColorForBox := sdBorderColorD
+    else if timeframe == 'W'
+        formatTf := 'W'
+        bgColorForBox := sdColorW
+        borderColorForBox := sdBorderColorW
+    else if timeframe == 'M'
+        formatTf := 'M'
+        bgColorForBox := sdColorM
+        borderColorForBox := sdBorderColorM    
+    // test M    
+
+    var float bottomBox_HT = na
+    var float topBox_HT = na
+    momentCTD_HT = time(timeframe)[2]
+
+    if (((redCandle_HT and greenCandle_HT[1]) or (redCandle_HT and neutralCandle_HT[1])) and (candleChange_HT / candleChange_HT[1]) >= legOutCandleSize and barstate.isconfirmed[1] and (showHTFsdZones or showLTFsdZones) and close_HT[1] >= close_HT and open_HT[1] <= open_HT)
+
+        if high_HT >= high_HT[1]
+            topBox_HT := high_HT
+        else 
+            topBox_HT := high_HT[1]
+
+        drawSupplyZone(formatTf, momentCTD_HT, topBox_HT, momentCTD, open_HT[1], bgColorForBox, borderColorForBox)
+  
+    if (((greenCandle_HT and redCandle_HT[1]) or (greenCandle_HT and neutralCandle_HT[1])) and (candleChange_HT / candleChange_HT[1]) >= legOutCandleSize and barstate.isconfirmed[1] and (showHTFsdZones or showLTFsdZones) and close_HT[1] <= close_HT and open_HT[1] >= open_HT)
+
+        if low_HT <= low_HT[1]
+            bottomBox_HT := low_HT
+        else 
+            bottomBox_HT := low_HT[1]
+
+        drawDemandZone(formatTf, momentCTD_HT, open_HT[1], momentCTD, bottomBox_HT, bgColorForBox, borderColorForBox)
+
+if show2mZones and str.tonumber(current_tf) <= 2
+    createZones('2')
+if show5mZones and str.tonumber(current_tf) <= 5
+    createZones('5')
+if show15mZones and str.tonumber(current_tf) <= 10
+    createZones('10')
+if show30mZones and str.tonumber(current_tf) <= 30
+    createZones('30')
+if show60mZones and str.tonumber(current_tf) <= 60
+    createZones('60')
+if show4hZones and str.tonumber(current_tf) <= 240
+    createZones('240') 
+if showDZones and str.tonumber(current_tf) <= 1440
+    createZones('D')
+if showWZones and str.tonumber(current_tf) <= 10080
+    createZones('W')
+if showMZones and str.tonumber(current_tf) <= 43800
+    createZones('M')
+
+i = 0
+while i < array.size(supply_HT) and array.size(supply_HT) > 0
+    box currentBox = array.get(supply_HT, i)
+    float breakLevel = box.get_top(currentBox)
+    if close >= breakLevel
+        array.remove(supply_HT, i)
+        box.delete(currentBox)
+        int(na)
+    else
+        box.set_right(currentBox, momentCTD)
+        i += 1
+        int(na)
+
+i2 = 0
+while i2 < array.size(demand_HT) and array.size(demand_HT) > 0
+    box currentBox = array.get(demand_HT, i2)
+    float breakLevel = box.get_bottom(currentBox)
+    if close <= breakLevel 
+        array.remove(demand_HT, i2)
+        box.delete(currentBox)
+        int(na)
+    else
+        box.set_right(currentBox, momentCTD)
+        i2 += 1
+        int(na)
+
+
+// COG Finder V9 --------------------------------
+candle_hi           = math.max(high, low)
+candle_body_hi      = math.max(close, open)
+candle_lo           = math.min(high, low)
+candle_body_lo      = math.min(close, open)
+candle_body         = candle_body_hi - candle_body_lo
+candle_basing       = (candle_body * 100)/(candle_hi - candle_lo)
+is_basing_candle    = math.abs(candle_basing) < 50
+is_doji             = candle_body_hi == candle_body_lo
+
+previous_candle_body_size = math.abs(open[1] - close[1])
+positive_cog_take_out_size = math.max(0, close - open[1])
+positive_strong_take_out = positive_cog_take_out_size > previous_candle_body_size * cog_threshold
+
+negative_cog_take_out_size = math.max(0, open[1] - close)
+negative_strong_take_out = negative_cog_take_out_size > previous_candle_body_size * cog_threshold
+
+candle_green        = open < close
+candle_red          = open > close
+candle_range        = high - low
+candle_inside_bar   = candle_hi[1] > candle_hi and candle_lo[1] < candle_lo
+
+candle_pos_cog      = showCogs and (close >= ema20 and (close >= ema50 or close >= ema200) and close >= dVwapValue and (close >= wVwapValue or close >= mVwapValue)) and not is_basing_candle and ((candle_red[1] or is_doji[1]) and candle_green) and (candle_body_hi > candle_body_lo and (candle_body_hi > open[1] or candle_body_hi > candle_hi[1])) and positive_strong_take_out
+candle_neg_cog      = showCogs and (close <= ema20 and (close <= ema50 or close <= ema200) and close <= dVwapValue and (close <= wVwapValue or close <= mVwapValue)) and not is_basing_candle and ((candle_green[1] or is_doji[1]) and candle_red) and (candle_body_hi > candle_body_lo and (candle_body_lo < open[1] or candle_body_lo < candle_lo[1])) and negative_strong_take_out
+
+if candle_pos_cog
+    draw_pos_cog        = label.new(bar_index, high, xloc = xloc.bar_index, yloc = yloc.abovebar, text = "+COG V9", textcolor = cog_lbl_text_color, color = cog_lbl_color_pos)
+    //alert("V9 + COG Made on " + str.tostring(syminfo.ticker), freq = alert.freq_once_per_bar)
+    label.delete(draw_pos_cog[1])
+if candle_neg_cog
+    draw_neg_cog        = label.new(bar_index, high, xloc = xloc.bar_index, yloc = yloc.abovebar, text = "-COG V9", textcolor = cog_lbl_text_color, color = cog_lbl_color_neg)
+    //alert("V9 - COG Made on " + str.tostring(syminfo.ticker), freq = alert.freq_once_per_bar)
+    label.delete(draw_neg_cog[1])  
+
+// for showing all cogs
+// Input to control background color visibility
+//showBgColor = input.bool(false, "Show Background") 
+
+//bgcolor(showAllCogs ? (ta.highest(candle_pos_cog ? 1 : 0, 1) != 0 ? cog_bg_color_pos : na) : na, offset=0, title = "Show All V9")
+//bgcolor(showAllCogs ? (ta.highest(candle_neg_cog ? 1 : 0, 1) != 0 ? cog_bg_color_neg : na) : na, offset=0, title = "Show All V9")
+
+//alertcondition(candle_pos_cog or candle_neg_cog, title = "Any COG Alert", message = "Any COG MADE at {{close}} for {{ticker}}")
+// ---------
+
+///// ----------- Alert COG's -----------------////////////
+
+//alertcondition(candle_pos_cog, title = "V9 +COG Alert", message = "V9 +COG MADE at {{close}} for {{ticker}}")
+//alertcondition(candle_neg_cog, title = "V9 -COG Alert", message = "V9 -COG MADE at {{close}} for {{ticker}}")
+
+// ---------
+///// ----------- Plot ALL V9 COG's -----------------////////////
+plotshape(candle_pos_cog, title="Pos COG V9", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
+plotshape(candle_neg_cog , title="Neg COG V9", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
+// ---------
+
+
+
+
+
+
+///////////---------Migz API-------///////////
+
+
+// === INPUTS ===
+
+useVolumeFilterLong = input.bool(true, "Require Volume for Long")
+useVolumeFilterShort = input.bool(true, "Require Volume for Short")
+
+// === VOLUME FILTER FOR SHORT SIGNALS ===
+greenCandle        = close > open                          // Current candle is bullish (green)
+prevRedCandle      = close[1] < open[1]                    // Previous candle was bearish (red)
+volumeFilterShortOK = volume < volume[1] and prevRedCandle // Volume lower than previous and previous was red
+
+// === FINALIZED SHORT SIGNAL CONDITIONS ===
+prevRed = close[1] < open[1]     // 1st previous candle red
+prevRed2 = close[2] < open[2]     // 2nd previous candle red
+
+rule1S = low[1] < close[1]                    // Previous candle closed above its low (lower wick)
+rule2S = close > open                               // Current candle is red (close < open)
+rule3S = close <= high[1]                     // Current close is below or equal to previous high
+rule4S = close[1] <= high                     // Previous close is below or equal to current high
+rule5S = low[1] <= low                        // Previous low is below or equal to current low
+rule6S = high[1] > high                       // Previous high is greater than current high (failed breakout)
+rule7S = not useVolumeFilterShort or volumeFilterShortOK  // Volume trap logic (optional toggle)
+rule8s = open > close[1]
+ShortPull = greenCandle and prevRed and prevRed2
+
+validShort = rule1S and rule2S and rule3S and rule4S and rule5S and rule6S and rule7S and ShortPull
+validShortBody = rule2S and rule3S and rule4S and volumeFilterShortOK and ShortPull and rule8s
+
+// === VOLUME FILTER FOR LONG SIGNALS ===
+redCandle = close < open                              // Current candle is red
+prevGreenCandle = close[1] > open[1]                  // Previous candle was green
+volumeFilterLongOK = volume < volume[1] and prevGreenCandle
+
+// === FINALIZED LONG SIGNAL CONDITIONS ===
+prevGreen1 = close[1] > open[1]     // 1st previous candle green
+prevGreen2 = close[2] > open[2]     // 2nd previous candle green
+
+rule1L = high[1] > close[1]
+rule2L = close < open   
+rule3L = close >= low[1]
+rule4L = close[1] >= low
+rule5L = high[1] >= high
+rule6L = low[1] < low
+rule7L = not useVolumeFilterLong or volumeFilterLongOK 
+rule8L = open < close[1]
+LongPull = redCandle and prevGreen1 and prevGreen2
+
+
+validLong = rule1L and rule2L and rule3L and rule4L and rule5L and rule6L and rule7L and LongPull
+validLongBody = rule2L and rule3L and rule4L and volumeFilterLongOK and LongPull and rule8L
+
+// === PLOTS ===
+
+plotshape(validLong, title="Long Entry", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.small)
+plotshape(validShort, title="Short Entry", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.small)
+plotshape(validShortBody, title="Short Body Entry", location=location.abovebar, color=color.fuchsia, style=shape.triangledown, size=size.tiny)
+plotshape(validLongBody, title="Long Body Entry", location=location.belowbar, color=color.teal, style=shape.triangleup, size=size.tiny)
+
+
+// === ALERTS ===
+alertcondition(validLong, title="Long Signal", message="Bullish Trap Reversal Signal for {{ticker}}")
+alertcondition(validShort, title="Short Signal", message="Bearish Trap Reversal Signal for {{ticker}}")
+
+
+// Send out an alert if this candle meets our conditions
+//alertcondition(validLong or validShort, title="API Alert!", message="Pullback signal for {{ticker}}")
+alertcondition(validLong, title="Long API Alert!", message="Long Pullback signal for {{ticker}}")
+alertcondition(validShort, title="Short API Alert!", message="Short Pullback signal for {{ticker}}")
+
+
+///////===========Golden Ratio================////////////////////////
+
+
+// inputs //
+//{
+trailType = input.string("Modified", "Trailtype", group="Golden Ratio Settings", options=["Fixed", "Modified", "Percentage", "Volatility", "Time", "Dynamic"])
+ATRPeriod        = input(200, "ATR Period")
+ATRFactor        = input(8, "ATR Factor")
+show_fib_entries = input(true, "Show Fib Entries?")
+
+//norm_o = security(tickerid(syminfo.prefix,syminfo.ticker), timeframe.period, open)
+norm_o = open
+norm_h = high
+norm_l = low
+norm_c = close
+//}
+
+
+//////// FUNCTIONS //////////////
+//{
+// Wilders ma //
+Wild_ma(_src, _malength) =>
+    _wild  = 0.0
+    _wild := nz(_wild[1]) + (_src - nz(_wild[1])) / _malength
+
+/////////// TRUE RANGE CALCULATIONS /////////////////
+HiLo = math.min(norm_h - norm_l, 1.5 * nz(ta.sma((norm_h - norm_l), ATRPeriod)))
+
+HRef = norm_l<= norm_h[1] ?
+ norm_h - norm_c[1] :
+ (norm_h - norm_c[1]) - 0.5 * (norm_l- norm_h[1])
+
+LRef = norm_h >= norm_l[1] ?
+ norm_c[1] - norm_l:
+ (norm_c[1] - norm_l) - 0.5 * (norm_l[1] - norm_h)
+
+trueRange =
+ trailType == "modified" ? math.max(HiLo, HRef, LRef) :
+ math.max(norm_h - norm_l, math.abs(norm_h - norm_c[1]), math.abs(norm_l - norm_c[1])) 
+//}
+
+
+/////////// TRADE LOGIC ////////////////////////
+//{
+loss = ATRFactor * Wild_ma(trueRange, ATRPeriod)
+
+Up = norm_c - loss
+Dn = norm_c + loss
+
+TrendUp   = Up
+TrendDown = Dn
+Trend     = 1
+
+TrendUp   := norm_c[1] > TrendUp[1]   ? math.max(Up, TrendUp[1])   : Up
+TrendDown := norm_c[1] < TrendDown[1] ? math.min(Dn, TrendDown[1]) : Dn
+
+Trend := norm_c > TrendDown[1] ? 1 : norm_c < TrendUp[1]? -1 : nz(Trend[1],1)
+trail = Trend == 1? TrendUp : TrendDown
+
+ex = 0.0
+ex :=
+ ta.crossover(Trend, 0)  ? norm_h :
+ ta.crossunder(Trend, 0) ? norm_l :
+ Trend == 1  ? math.max(ex[1], norm_h) :
+ Trend == -1 ? math.min(ex[1], norm_l) : ex[1]
+//}
+
+
+////// FIBONACCI LEVELS ///////////
+//{
+state = Trend == 1 ? "long" : "short"
+
+fib0Level = 65.0
+fib1Level = 61.8
+fib2Level = 78.6
+fib3Level = 88.6
+fib4Level = 1.618
+
+f0 = ex + (trail - ex) * fib0Level / 100
+f1 = ex + (trail - ex) * fib1Level / 100
+f2 = ex + (trail - ex) * fib2Level / 100
+f3 = ex + (trail - ex) * fib3Level / 100
+f4 = ex + (trail - ex) * fib4Level / 100
+
+l100 = trail + 0
+
+Fib0 = plot(f0,  "Fib 1", style = plot.style_line, color = color.black)
+Fib1 = plot(f1,  "Fib 1", style = plot.style_line, color = color.black)
+//Fib2 = plot(f2,  "Fib 2", style = plot.style_line, color = color.black)
+fib3 = plot(f3,  "Fib 3", style = plot.style_line, color = color.black)
+fib4 = plot(f4, "Fib 4", style = plot.style_line, color = color.rgb(255, 235, 59, 16))
+
+L100 = plot(l100, "l100", style = plot.style_line, color = color.black)
+
+//fill(Fib0, Fib2, color = state == "long"? color.green : state == "short"? color.red : na)
+//fill(Fib2, fib3, color = state == "long"? color.new(color.green, 70) : state == "short"? color.new(color.red, 70) : na)
+fill(fib3, L100, color = state == "long"? color.new(color.green, 60) : state == "short"? color.new(color.red, 60) : na)
+fill(Fib0, Fib1, color = state == "long"? #3bff9a4d : state == "short"? #ff3b3b4d : na)
+
+atr = ta.sma(trueRange, 14)
+// --- Price touches FIB Zone A (f3 to l100) based on trend
+inZoneA_long  = state == "long" and high >= math.min(f3, l100) and low <= math.max(f3, l100)
+inZoneA_short = state == "short" and high >= math.min(f3, l100) and low <= math.max(f3, l100)
+
+
+inZoneB_long  = state == "long" and high >= math.min(f0, f1) and low <= math.max(f0, f1)
+inZoneB_short = state == "short" and high >= math.min(f0, f1) and low <= math.max(f0, f1)
+
+alertcondition(inZoneB_long,  title="Zone B Tapped (LONG)",  message="Price tapped Zone B during LONG trend")
+alertcondition(inZoneB_short, title="Zone B Tapped (SHORT)", message="Price tapped Zone B during SHORT trend")
+// --- Alert touches FIB Zone A (f3 to l100) based on trend
+alertcondition(inZoneA_long,  title="Zone A Tapped (LONG)",  message="Price tapped Zone A during LONG trend")
+alertcondition(inZoneA_short, title="Zone A Tapped (SHORT)", message="Price tapped Zone A during SHORT trend")
+
+
+if inZoneB_long
+    alert("Price entered Zone B (LONG)", alert.freq_once_per_bar)
+
+if inZoneB_short
+    alert("Price entered Zone B (SHORT)", alert.freq_once_per_bar)
+
+if inZoneA_long
+    alert("Price entered Zone A (LONG)", alert.freq_once_per_bar)
+
+if inZoneA_short
+    alert("Price entered Zone A (SHORT)", alert.freq_once_per_bar)
+
+
+//////////////// COG V7
+
+
+V7candle_hi           = math.max(high, low)
+V7candle_body_hi      = math.max(close, open)
+V7candle_lo           = math.min(high, low)
+V7candle_body_lo      = math.min(close, open)
+V7candle_body         = candle_body_hi - candle_body_lo
+V7candle_basing       = (candle_body * 100)/(candle_hi - candle_lo)
+V7is_basing_candle    = math.abs(candle_basing) < 50
+V7is_doji             = candle_body_hi == candle_body_lo
+
+V7candle_green        = open < close
+V7candle_red          = open > close
+V7candle_range        = high - low
+V7candle_inside_bar   = candle_hi[1] > candle_hi and candle_lo[1] < candle_lo
+
+V7candle_pos_cog      = showCogs and (close >= ema20 and close >= dVwapValue) and not V7is_basing_candle and ((V7candle_red[1] or is_doji[1]) and V7candle_green) and (V7candle_body_hi > V7candle_body_lo and (V7candle_body_hi > open[1] or V7candle_body_hi > V7candle_hi[1]))
+V7candle_neg_cog      = showCogs and (close <= ema20 and close <= dVwapValue) and not V7is_basing_candle and ((V7candle_green[1] or is_doji[1]) and V7candle_red) and (V7candle_body_hi > V7candle_body_lo and (V7candle_body_lo < open[1] or V7candle_body_lo < V7candle_lo[1]))
+
+if V7candle_pos_cog
+    draw_pos_cog        = label.new(bar_index, high, xloc = xloc.bar_index, yloc = yloc.abovebar, text = "+COG V7", textcolor = cog_lbl_text_color, color = cog_lbl_color_pos)
+    alert("V7 + COG Made on " + str.tostring(syminfo.ticker), freq = alert.freq_once_per_bar)
+    label.delete(draw_pos_cog[1])
+if candle_neg_cog
+    draw_neg_cog        = label.new(bar_index, high, xloc = xloc.bar_index, yloc = yloc.abovebar, text = "-COG V7", textcolor = cog_lbl_text_color, color = cog_lbl_color_neg)
+    alert("V7 - COG Made on " + str.tostring(syminfo.ticker), freq = alert.freq_once_per_bar)
+    label.delete(draw_neg_cog[1])  
+
+
+
+plotshape(V7candle_pos_cog, title="Pos COG V7", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
+plotshape(V7candle_neg_cog , title="Neg COG V7", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
+// for showing all cogs
+
+
+//bgcolor(showAllCogs ? (ta.highest(V7candle_pos_cog ? 1 : 0, 1) != 0 ? cog_bg_color_pos : na) : na, offset=0, title="V7 Show All" )
+//bgcolor(showAllCogs ? (ta.highest(V7candle_neg_cog ? 1 : 0, 1) != 0 ? cog_bg_color_neg : na) : na, offset=0, title="V7 Show All")
+
+alertcondition(V7candle_pos_cog, title = "V7 +COG Alert", message = "V7 +COG MADE at {{close}} for {{ticker}}")
+alertcondition(V7candle_neg_cog, title = "V7 -COG Alert", message = "V7 -COG MADE at {{close}} for {{ticker}}")
+
+
+
+
+// COMBO LOGIC --------------------------------------------------------
+combo_cog_pos = candle_pos_cog and V7candle_pos_cog
+combo_cog_neg = candle_neg_cog and V7candle_neg_cog
+
+// Override individual if combo is true
+final_cog_pos_v9 = candle_pos_cog and not combo_cog_pos
+final_cog_neg_v9 = candle_neg_cog and not combo_cog_neg
+final_cog_pos_v7 = V7candle_pos_cog and not combo_cog_pos
+final_cog_neg_v7 = V7candle_neg_cog and not combo_cog_neg
+
+// Plot combo COGs as star/circle
+plotshape(combo_cog_pos, title="Combo Bullish COG", style=shape.cross, location=location.belowbar, color=color.lime, size=size.tiny)
+plotshape(combo_cog_neg, title="Combo Bearish COG", style=shape.circle, location=location.abovebar, color=color.fuchsia, size=size.tiny)
+
+// Plot individual COGs only when not combo
+//plotshape(final_cog_pos_v9, title="Pos COG V9", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
+//plotshape(final_cog_neg_v9, title="Neg COG V9", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
+//plotshape(final_cog_pos_v7, title="Pos COG V7", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
+//plotshape(final_cog_neg_v7, title="Neg COG V7", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
+
+// Alerts for combo COGs
+alertcondition(combo_cog_pos, title="COMBO +COG Alert", message="COMBO +COG V7+V9 Made at {{close}} for {{ticker}}")
+alertcondition(combo_cog_neg, title="COMBO -COG Alert", message="COMBO -COG V7+V9 Made at {{close}} for {{ticker}}")
+
+
+// === ALERT: Price inside Daily/Weekly/Monthly SUPPLY Zones ===
+
