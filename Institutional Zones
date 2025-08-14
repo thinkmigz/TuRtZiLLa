@@ -1,5 +1,5 @@
-//@version=5
-indicator("Institutional Zones & Backwards Flow (Merged Version + Spike Alert)", overlay=true)
+//@version=6
+indicator("Institutional Zones & Backwards Flow (Spike Alerts)", overlay=true)
 
 //Version 6 is master
 
@@ -33,16 +33,18 @@ trapLookback     = input.int(30, "Trap Setup Max Lookback", minval=10)
 showZoneLabels   = input.bool(true, "Show Zone Labels")
 showSweepLabels  = input.bool(true, "Show Liquidity Sweep Labels")
 
+
+
 // === VOLUME LOGIC ===
 volMA      = ta.sma(volume, volLength)
 volStrong  = volume > volMA * 1.5
 volMedium  = volume > volMA
-volWeak    = not volMedium
-volLabel = volStrong ? "50%" : volMedium ? "70%" : "90%"
+volWeak    = volume <= volMA 
+volLabel = volStrong ? " 90% Vol Strong" : volMedium ? "50%" : "10%"
 
 
-volColorDemand = volStrong ? color.new(color.maroon, 50) : volMedium ? color.new(color.orange, 70) : color.new(color.orange, 90)
-volColorSupply = volStrong ? color.new(color.fuchsia, 50) : volMedium ? color.new(color.fuchsia, 70) : color.new(color.fuchsia, 90)
+volColorDemand = volStrong ? color.new(color.lime, 50) : volMedium ? color.new(color.lime, 95) :  color.new(color.white, 100)
+volColorSupply = volStrong ? color.new(color.fuchsia,50) : volMedium ? color.new(color.fuchsia, 95) : color.new(color.white, 100)
 volPass = not volConfirm or volMedium or volStrong
 
 // === CANDLE LOGIC ===
@@ -57,46 +59,50 @@ brokePrevLow   = low < ta.lowest(low[1], multiBarLookback)
 brokePrevHigh  = high > ta.highest(high[1], multiBarLookback)
 
 // === STRUCTURE SUPPLY ZONE ===
-supplyCond = showSupply and isSmallBody[1] and priorUp and strongDown
+supplyCond = showSupply and isSmallBody[1] and close[2] > open[2] and close < low[1] and close < open
+
 if supplyCond
     top = high[1]
     bottom = bodyLow
-    boxRef = box.new(bar_index[1], top, bar_index + zoneLifeBars, bottom, border_color=color.red, bgcolor=color.new(color.red, 85), extend=extend.right)
+    boxRef = box.new(bar_index[1], top, bar_index + zoneLifeBars, bottom, text="Supply",border_color=color.red, bgcolor=color.new(color.red, 50), extend=extend.right)
     array.push(supplyBoxes, boxRef)
     if showZoneLabels
-        labelRef = label.new(bar_index[1], top, text="Supply", style=label.style_label_down, color=color.red, textcolor=color.white, size=size.tiny)
+        labelRef = label.new(bar_index[1], top, text="Supply"+volLabel, style=label.style_label_down, color=color.red, textcolor=color.white, size=size.tiny)
         array.push(supplyLabels, labelRef)
 
 // === STRUCTURE DEMAND ZONE ===
-demandCond = showDemand and isSmallBody[1] and priorDown and strongUp
+demandCond = showDemand and isSmallBody[1] and close[2] < open[2] and close > high[1] and close > open
+
 if demandCond
     top = bodyHigh
     bottom = low[1]
-    boxRef = box.new(bar_index[1], top, bar_index + zoneLifeBars, bottom, border_color=color.green, bgcolor=color.new(color.green, 85), extend=extend.right)
+    boxRef = box.new(bar_index[1], top, bar_index + zoneLifeBars, bottom, text="Demand", border_color=color.green, bgcolor=color.new(color.green, 50), extend=extend.right)
     array.push(demandBoxes, boxRef)
     if showZoneLabels
-        labelRef = label.new(bar_index[1], bottom, text="Demand", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.tiny)
+        labelRef = label.new(bar_index[1], bottom, text="Demand"+volLabel, style=label.style_label_up, color=color.green, textcolor=color.white, size=size.tiny)
         array.push(demandLabels, labelRef)
 
 // === SPIKE DEMAND ZONE ===
 spikeDemand = showSpikes and brokePrevLow and close > open and ((open - low) / (high - low)) > wickPct and volPass
 if spikeDemand
-    boxRef = box.new(bar_index, close, bar_index + zoneLifeBars, low, border_color=color.orange, bgcolor=volColorDemand, extend=extend.right)
+    boxRef = box.new(bar_index, close, bar_index + zoneLifeBars, low, text="Spike Demand", border_color=color.lime, bgcolor=volColorDemand, extend=extend.right)
     array.push(spikeDemBoxes, boxRef)
     array.push(spikeDemTimes, bar_index)
     if showZoneLabels
-        labelRef = label.new(bar_index, low, text="Spike Demand", style=label.style_label_up, color=color.orange, textcolor=color.white, size=size.tiny)
+        labelOffset = 11
+        labelRef = label.new(bar_index+labelOffset, low, text="Spike Demand"+volLabel, style=label.style_label_up, color=color.orange, textcolor=color.white, size=size.tiny)
         array.push(spikeDemLabels, labelRef)
 
 
 // === SPIKE SUPPLY ZONE ===
 spikeSupply = showSpikes and brokePrevHigh and close < open and ((high - open) / (high - low)) > wickPct and volPass
 if spikeSupply
-    boxRef = box.new(bar_index, high, bar_index + zoneLifeBars, close, border_color=color.fuchsia, bgcolor=volColorSupply, extend=extend.right)
+    boxRef = box.new(bar_index, high, bar_index + zoneLifeBars, close, text="Spike Supply", border_color=color.fuchsia, bgcolor=volColorSupply, extend=extend.right)
     array.push(spikeSupBoxes, boxRef)
     array.push(spikeSupTimes, bar_index)
     if showZoneLabels
-        labelRef = label.new(bar_index, high, text="Spike Supply", style=label.style_label_down, color=color.fuchsia, textcolor=color.white, size=size.tiny)
+        labelOffset = 11
+        labelRef = label.new(bar_index+labelOffset, high, text="Spike Supply"+volLabel, style=label.style_label_down, color=color.fuchsia, textcolor=color.white, size=size.tiny)
         array.push(spikeSupLabels, labelRef)
 
 // === CLEANUP STRUCTURE ZONES ===
@@ -315,3 +321,111 @@ plotshape(validLongBody, title="Long Body Entry", location=location.belowbar, co
 alertcondition(validLong, title="Long Signal", message="Bullish Trap Reversal Signal for {{ticker}}")
 alertcondition(validShort, title="Short Signal", message="Bearish Trap Reversal Signal for {{ticker}}")
 
+//__________________________________________________________________________
+
+//Painting Bars Signals
+
+// === Candle Structure ===
+candleHigh = high
+candleLow = low
+candleOpen = open
+candleClose = close
+body = math.abs(close - open)
+range1 = high - low
+bodyPct = range1 != 0 ? (body / range1) : 0
+colorLoss = 1 - bodyPct
+
+// === Bar Control Classification ===
+absControl     = bodyPct >= 0.90
+fullControl    = bodyPct >= 0.66 and bodyPct < 0.90
+goodControl    = bodyPct >= 0.50 and bodyPct < 0.66
+weakControl    = bodyPct >= 0.33 and bodyPct < 0.50
+lostControl    = bodyPct < 0.33
+doji           = open == close
+
+bullishBar = close > open
+bearishBar = open > close
+
+// === Labeled Control Conditions (for Menu Clarity) ===
+// These lines only exist to label colors in the menu — they do not plot
+plot(na, title="Bullish Absolute Control", color=color.lime)
+plot(na, title="Bullish Full Control", color=color.green)
+plot(na, title="Bullish Good Control", color=color.teal)
+plot(na, title="Bullish Weak Control", color=color.navy)
+plot(na, title="Bullish Lost Control", color=color.gray)
+
+plot(na, title="Bearish Absolute Control", color=color.red)
+plot(na, title="Bearish Full Control", color=color.maroon)
+plot(na, title="Bearish Good Control", color=color.fuchsia)
+plot(na, title="Bearish Weak Control", color=color.orange)
+plot(na, title="Bearish Lost Control", color=color.silver)
+
+plot(na, title="Doji / Draw", color=color.yellow)
+
+// === Apply Bar Colors ===
+color barColor = na
+barColor := absControl and bullishBar ? color.lime : barColor
+barColor := fullControl and bullishBar ? color.green : barColor
+barColor := goodControl and bullishBar ? color.teal : barColor
+barColor := weakControl and bullishBar ? color.navy : barColor
+barColor := lostControl and bullishBar ? color.gray : barColor
+barColor := absControl and bearishBar ? color.red : barColor
+barColor := fullControl and bearishBar ? color.maroon : barColor
+barColor := goodControl and bearishBar ? color.fuchsia : barColor
+barColor := weakControl and bearishBar ? color.orange : barColor
+barColor := lostControl and bearishBar ? color.silver : barColor
+barColor := doji ? color.yellow : barColor
+
+barcolor(barColor)
+
+// === Bottoming Tail / Topping Tail Detection ===
+lookbackBars = 3
+priorReds = close[1] < open[1] and close[2] < open[2] and close[3] < open[3]
+priorGreens = close[1] > open[1] and close[2] > open[2] and close[3] > open[3]
+
+longLowerWick = (open < close) and ((open - low) > (body * 1.5))
+longUpperWick = (open > close) and ((high - open) > (body * 1.5))
+
+bottomingTail = priorReds and longLowerWick
+toppingTail = priorGreens and longUpperWick
+
+
+plotshape(bottomingTail, title="Bottoming Tail", location=location.belowbar, color=color.green, style=shape.circle, size=size.small)
+plotshape(toppingTail, title="Topping Tail", location=location.abovebar, color=color.red, style=shape.circle, size=size.small)
+
+
+
+// === MA USER INPUTS ===
+enable_ma     = input.bool(true, title="Enable MA")
+ma_type       = input.string("SMA", title="MA Type", options=["SMA", "EMA", "VWMA", "TEMA", "ALMA"])
+length        = input.int(400, minval=1, title="Length")
+offset_plot   = input.int(0, minval=-500, maxval=500, title="Plot Offset")
+ma_color      = input.color(color.white, title="MA Color")
+
+// === FIXED PARAMETERS ===
+source        = close
+offset_alma   = 0.85
+sigma_alma    = 6.0
+
+// === TEMA FUNCTION ===
+tema(src, len) =>
+    ema1 = ta.ema(src, len)
+    ema2 = ta.ema(ema1, len)
+    ema3 = ta.ema(ema2, len)
+    3 * ema1 - 3 * ema2 + ema3
+
+// === ALMA FUNCTION ===
+alma(src, len) =>
+    ta.alma(src, len, offset_alma, sigma_alma)
+
+// === MA SELECTION ===
+ma = switch ma_type
+    "SMA"  => ta.sma(source, length)
+    "EMA"  => ta.ema(source, length)
+    "VWMA" => ta.vwma(source, length)
+    "TEMA" => tema(source, length)
+    "ALMA" => alma(source, length)
+    => na
+
+// === PLOT ===
+plot(enable_ma ? ma : na, title="Custom MA", color=ma_color, offset=offset_plot)
