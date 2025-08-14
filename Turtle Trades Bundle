@@ -4,7 +4,7 @@
 // 
 
 //@version=6
-indicator(title="Turtle Trades 2025 Cog AI ", shorttitle="Turle Trades Cog AI", overlay=true)
+indicator(title="Turtle Trades 2025 Cog AI ", shorttitle="Turtle Trades", overlay=true)
 
 
 // SETTINGS -----------------------------
@@ -523,27 +523,6 @@ if candle_neg_cog
     //alert("V9 - COG Made on " + str.tostring(syminfo.ticker), freq = alert.freq_once_per_bar)
     label.delete(draw_neg_cog[1])  
 
-// for showing all cogs
-// Input to control background color visibility
-//showBgColor = input.bool(false, "Show Background") 
-
-//bgcolor(showAllCogs ? (ta.highest(candle_pos_cog ? 1 : 0, 1) != 0 ? cog_bg_color_pos : na) : na, offset=0, title = "Show All V9")
-//bgcolor(showAllCogs ? (ta.highest(candle_neg_cog ? 1 : 0, 1) != 0 ? cog_bg_color_neg : na) : na, offset=0, title = "Show All V9")
-
-//alertcondition(candle_pos_cog or candle_neg_cog, title = "Any COG Alert", message = "Any COG MADE at {{close}} for {{ticker}}")
-// ---------
-
-///// ----------- Alert COG's -----------------////////////
-
-//alertcondition(candle_pos_cog, title = "V9 +COG Alert", message = "V9 +COG MADE at {{close}} for {{ticker}}")
-//alertcondition(candle_neg_cog, title = "V9 -COG Alert", message = "V9 -COG MADE at {{close}} for {{ticker}}")
-
-// ---------
-///// ----------- Plot ALL V9 COG's -----------------////////////
-plotshape(candle_pos_cog, title="Pos COG V9", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
-plotshape(candle_neg_cog , title="Neg COG V9", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
-// ---------
-
 
 
 
@@ -780,13 +759,6 @@ if candle_neg_cog
 
 
 
-plotshape(V7candle_pos_cog, title="Pos COG V7", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
-plotshape(V7candle_neg_cog , title="Neg COG V7", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
-// for showing all cogs
-
-
-//bgcolor(showAllCogs ? (ta.highest(V7candle_pos_cog ? 1 : 0, 1) != 0 ? cog_bg_color_pos : na) : na, offset=0, title="V7 Show All" )
-//bgcolor(showAllCogs ? (ta.highest(V7candle_neg_cog ? 1 : 0, 1) != 0 ? cog_bg_color_neg : na) : na, offset=0, title="V7 Show All")
 
 alertcondition(V7candle_pos_cog, title = "V7 +COG Alert", message = "V7 +COG MADE at {{close}} for {{ticker}}")
 alertcondition(V7candle_neg_cog, title = "V7 -COG Alert", message = "V7 -COG MADE at {{close}} for {{ticker}}")
@@ -808,16 +780,11 @@ final_cog_neg_v7 = V7candle_neg_cog and not combo_cog_neg
 plotshape(combo_cog_pos, title="Combo Bullish COG", style=shape.cross, location=location.belowbar, color=color.lime, size=size.tiny)
 plotshape(combo_cog_neg, title="Combo Bearish COG", style=shape.circle, location=location.abovebar, color=color.fuchsia, size=size.tiny)
 
-// Plot individual COGs only when not combo
-//plotshape(final_cog_pos_v9, title="Pos COG V9", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
-//plotshape(final_cog_neg_v9, title="Neg COG V9", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
-//plotshape(final_cog_pos_v7, title="Pos COG V7", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
-//plotshape(final_cog_neg_v7, title="Neg COG V7", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
 
 // Alerts for combo COGs
 alertcondition(combo_cog_pos, title="COMBO +COG Alert", message="COMBO +COG V7+V9 Made at {{close}} for {{ticker}}")
 alertcondition(combo_cog_neg, title="COMBO -COG Alert", message="COMBO -COG V7+V9 Made at {{close}} for {{ticker}}")
 
 
-// === ALERT: Price inside Daily/Weekly/Monthly SUPPLY Zones ===
+
 
