@@ -253,69 +253,66 @@ if demandCond
 //plotshape(spikeSupply, title="Spike Detected", location=location.abovebar, color=color.fuchsia, style=shape.xcross)
 plotshape(spikeDemand and volPass, title="Zone Detected", location=location.belowbar, color=color.rgb(255, 255, 255), style=shape.xcross)
 
-//___________________________________________________________________________________________________________________________________________________________
-
-
-
-
+//______________________________________Candlestick Trap Pullback Sniper_______"Momentum Pullback Detector"________________________
 // === INPUTS ===
-riskToReward    = input.float(title="Risk:Reward", defval=1.0, minval=0.1)
-useVolumeFilterLong = input.bool(true, "Require Volume for Long")
-useVolumeFilterShort = input.bool(true, "Require Volume for Short")
+riskToReward          = input.float(title="Risk:Reward", defval=1.0, minval=0.1)
+useVolumeFilterLong   = input.bool(true, "Require Volume for Long")
+useVolumeFilterShort  = input.bool(true, "Require Volume for Short")
+rvolLookback          = input.int(20, "Relative Volume Lookback", minval=1)
 
+// === RELATIVE VOLUME ===
+avgVolume             = ta.sma(volume, rvolLookback)
+rvol                  = volume / avgVolume
 
 // === VOLUME FILTER FOR SHORT SIGNALS ===
-greenCandle        = close > open                          // Current candle is bullish (green)
-prevRedCandle      = close[1] < open[1]                    // Previous candle was bearish (red)
-volumeFilterShortOK = volume < volume[1] and prevRedCandle // Volume lower than previous and previous was red
+greenCandle           = close > open
+prevRedCandle         = close[1] < open[1]
+volumeFilterShortOK   = rvol < 1.0 and prevRedCandle
 
 // === FINALIZED SHORT SIGNAL CONDITIONS ===
-prevRed = close[1] < open[1]     // 1st previous candle red
-prevRed2 = close[2] < open[2]     // 2nd previous candle red
+prevRed              = close[1] < open[1]
+prevRed2             = close[2] < open[2]
 
-rule1S = low[1] < close[1]                    // Previous candle closed above its low (lower wick)
-rule2S = close > open                               // Current candle is red (close < open)
-rule3S = close <= high[1]                     // Current close is below or equal to previous high
-rule4S = close[1] <= high                     // Previous close is below or equal to current high
-rule5S = low[1] <= low                        // Previous low is below or equal to current low
-rule6S = high[1] > high                       // Previous high is greater than current high (failed breakout)
-rule7S = not useVolumeFilterShort or volumeFilterShortOK  // Volume trap logic (optional toggle)
-rule8s = open > close[1]
-ShortPull = greenCandle and prevRed and prevRed2
+rule1S               = low[1] < close[1]
+rule2S               = close < open // FIXED: red candle
+rule3S               = close <= high[1]
+rule4S               = close[1] <= high
+rule5S               = low[1] <= low
+rule6S               = high[1] > high
+rule7S               = not useVolumeFilterShort or volumeFilterShortOK
+rule8S               = open > close[1]
+ShortSetupTrigger    = greenCandle and prevRed and prevRed2 // RENAMED from ShortPull
 
-validShort = rule1S and rule2S and rule3S and rule4S and rule5S and rule6S and rule7S and ShortPull
-validShortBody = rule2S and rule3S and rule4S and volumeFilterShortOK and ShortPull and rule8s
+validShort           = rule1S and rule2S and rule3S and rule4S and rule5S and rule6S and rule7S and ShortSetupTrigger
+validShortBody       = rule2S and rule3S and rule4S and volumeFilterShortOK and ShortSetupTrigger and rule8S
 
 // === VOLUME FILTER FOR LONG SIGNALS ===
-redCandle = close < open                              // Current candle is red
-prevGreenCandle = close[1] > open[1]                  // Previous candle was green
-volumeFilterLongOK = volume < volume[1] and prevGreenCandle
+redCandle            = close < open
+prevGreenCandle      = close[1] > open[1]
+volumeFilterLongOK   = rvol < 1.0 and prevGreenCandle
 
 // === FINALIZED LONG SIGNAL CONDITIONS ===
-prevGreen1 = close[1] > open[1]     // 1st previous candle green
-prevGreen2 = close[2] > open[2]     // 2nd previous candle green
+prevGreen1           = close[1] > open[1]
+prevGreen2           = close[2] > open[2]
 
-rule1L = high[1] > close[1]
-rule2L = close < open   
-rule3L = close >= low[1]
-rule4L = close[1] >= low
-rule5L = high[1] >= high
-rule6L = low[1] < low
-rule7L = not useVolumeFilterLong or volumeFilterLongOK 
-rule8L = open < close[1]
-LongPull = redCandle and prevGreen1 and prevGreen2
+rule1L               = high[1] > close[1]
+rule2L               = close < open
+rule3L               = close >= low[1]
+rule4L               = close[1] >= low
+rule5L               = high[1] >= high
+rule6L               = low[1] < low
+rule7L               = not useVolumeFilterLong or volumeFilterLongOK
+rule8L               = open < close[1]
+LongSetupTrigger     = redCandle and prevGreen1 and prevGreen2
 
-
-validLong = rule1L and rule2L and rule3L and rule4L and rule5L and rule6L and rule7L and LongPull
-validLongBody = rule2L and rule3L and rule4L and volumeFilterLongOK and LongPull and rule8L
+validLong            = rule1L and rule2L and rule3L and rule4L and rule5L and rule6L and rule7L and LongSetupTrigger
+validLongBody        = rule2L and rule3L and rule4L and volumeFilterLongOK and LongSetupTrigger and rule8L
 
 // === PLOTS ===
-
 plotshape(validLong, title="Long Entry", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.small)
 plotshape(validShort, title="Short Entry", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.small)
 plotshape(validShortBody, title="Short Body Entry", location=location.abovebar, color=color.fuchsia, style=shape.triangledown, size=size.tiny)
 plotshape(validLongBody, title="Long Body Entry", location=location.belowbar, color=color.teal, style=shape.triangleup, size=size.tiny)
-
 
 // === ALERTS ===
 alertcondition(validLong, title="Long Signal", message="Bullish Trap Reversal Signal for {{ticker}}")
@@ -400,7 +397,7 @@ enable_ma     = input.bool(true, title="Enable MA")
 ma_type       = input.string("SMA", title="MA Type", options=["SMA", "EMA", "VWMA", "TEMA", "ALMA"])
 length        = input.int(400, minval=1, title="Length")
 offset_plot   = input.int(0, minval=-500, maxval=500, title="Plot Offset")
-ma_color      = input.color(color.white, title="MA Color")
+ma_color      = input.color(color.orange, title="MA Color")
 
 // === FIXED PARAMETERS ===
 source        = close
